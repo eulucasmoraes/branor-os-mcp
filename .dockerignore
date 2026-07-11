@@ -1,0 +1,16 @@
+node_modules
+dist
+.git
+.gitignore
+
+# Segredos — nunca vão para a imagem (Coolify injeta as envs em runtime)
+.env
+.env.*
+!.env.example
+
+# Dev / testes — não precisam no build de produção
+src/**/__tests__
+*.log
+coverage
+.vscode
+.idea
