@@ -15,9 +15,9 @@ function jsonResponse(status: number, body: unknown): Response {
 }
 
 describe('tasks/memory/wiki tools registry', () => {
-  it('registers all 9 tools (4 tasks + 2 memory + 3 wiki) in the global registry', () => {
+  it('registers all 14 tools (4 tasks + 7 memory + 3 wiki) in the global registry', () => {
     const names = new Set([...taskTools, ...memoryTools, ...wikiTools].map((t) => t.name));
-    expect(names.size).toBe(9);
+    expect(names.size).toBe(14);
     for (const name of names) {
       expect(allTools.some((t) => t.name === name)).toBe(true);
     }

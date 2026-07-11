@@ -416,6 +416,8 @@ export function createEndpoints(client: BranorOsClient, ctx: CallContext) {
       sourceRef?: string;
     }) => client.post<unknown>(wp('/memories'), body),
 
+
+
     /**
      * POST /workspaces/{workspaceId}/memories/search — semantic search over
      * the workspace's memories. Backing tool: memory_search.
@@ -425,7 +427,108 @@ export function createEndpoints(client: BranorOsClient, ctx: CallContext) {
       clientSlug?: string;
       agentId?: string;
       topK?: number;
+      memoryType?: string[];
+      minImportance?: number;
     }) => client.post<unknown>(wp('/memories/search'), body),
+
+    /**
+     * PATCH /workspaces/{workspaceId}/memories/{id} — edit a memory
+     * (content/summary/slug/memoryType/scope/importance/visibility). Never
+     * used to soft-delete. Backing tool: memory_update.
+     */
+    updateMemory: (
+      id: string,
+      body: {
+        content?: string;
+        summary?: string;
+        slug?: string;
+        memoryType?: string;
+        scope?: string;
+        importance?: number;
+        visibility?: string;
+      },
+      filters?: { clientSlug?: string; agentId?: string },
+    ) =>
+      client.request<unknown>(wp(`/memories/${id}`), {
+        method: 'PATCH',
+        body,
+        query: {
+          clientSlug: filters?.clientSlug,
+          agentId: filters?.agentId,
+        },
+      }),
+
+    /**
+     * GET /workspaces/{workspaceId}/memories/{id} — fetch a single memory
+     * (id or publicId). Backing tool: memory_get.
+     */
+    getMemory: (id: string, filters?: { clientSlug?: string; agentId?: string }) =>
+      client.request<unknown>(wp(`/memories/${id}`), {
+        method: 'GET',
+        query: {
+          clientSlug: filters?.clientSlug,
+          agentId: filters?.agentId,
+        },
+      }),
+
+    /**
+     * DELETE /workspaces/{workspaceId}/memories/{id} — soft-delete a memory
+     * (isActive=false + deletedAt; never a physical delete). Backing tool:
+     * memory_deactivate.
+     */
+    deactivateMemory: (id: string, filters?: { clientSlug?: string; agentId?: string }) =>
+      client.request<unknown>(wp(`/memories/${id}`), {
+        method: 'DELETE',
+        query: {
+          clientSlug: filters?.clientSlug,
+          agentId: filters?.agentId,
+        },
+      }),
+
+    /**
+     * GET /workspaces/{workspaceId}/memories/gc-candidates — read-only
+     * suggestions of cold memories (downgrade or soft-delete), never
+     * mutates. Backing tool: memory_gc_candidates.
+     */
+    gcCandidatesMemory: (query?: {
+      maxImportance?: number;
+      maxAccessCount?: number;
+      inactiveDays?: number;
+      limit?: number;
+      clientSlug?: string;
+      agentId?: string;
+    }) =>
+      client.get<unknown>(wp('/memories/gc-candidates'), {
+        maxImportance: query?.maxImportance,
+        maxAccessCount: query?.maxAccessCount,
+        inactiveDays: query?.inactiveDays,
+        limit: query?.limit,
+        clientSlug: query?.clientSlug,
+        agentId: query?.agentId,
+      }),
+
+    /**
+     * GET /workspaces/{workspaceId}/memories/bootstrap — non-semantic
+     * listing of memories in scope, ordered by importance desc (then
+     * recency). Meant to preload an agent's session context. Backing tool:
+     * memory_bootstrap.
+     */
+    bootstrapMemory: (query: {
+      clientSlug?: string;
+      agentId?: string;
+      memoryType?: string[];
+      minImportance?: number;
+      limit?: number;
+    }) =>
+      client.get<unknown>(wp('/memories/bootstrap'), {
+        clientSlug: query.clientSlug,
+        agentId: query.agentId,
+        memoryType: query.memoryType?.length
+          ? query.memoryType.join(',')
+          : undefined,
+        minImportance: query.minImportance,
+        limit: query.limit,
+      }),
 
     // ── Wiki (Biblioteca) ───────────────────────────────────────────────
 
