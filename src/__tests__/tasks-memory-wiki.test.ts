@@ -2,8 +2,26 @@ import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { allTools } from '../tools/index.js';
 import { taskTools, getTask } from '../tools/tasks.js';
-import { memoryTools, memorySearch } from '../tools/memory.js';
-import { wikiTools, wikiSearch } from '../tools/wiki.js';
+import {
+  memoryTools,
+  memorySearch,
+  memoryAdd,
+  memoryUpdate,
+  memoryConsolidate,
+  memoryLinkAdd,
+  memoryLinksList,
+  memoryLinkDelete,
+  memoryList,
+} from '../tools/memory.js';
+import {
+  wikiTools,
+  wikiSearch,
+  wikiNodeWrite,
+  wikiList,
+  wikiTree,
+  wikiNodeDelete,
+  wikiGraph,
+} from '../tools/wiki.js';
 import { BranorOsClient } from '../client/http.js';
 import { createEndpoints } from '../client/endpoints.js';
 
@@ -15,9 +33,9 @@ function jsonResponse(status: number, body: unknown): Response {
 }
 
 describe('tasks/memory/wiki tools registry', () => {
-  it('registers all 14 tools (4 tasks + 7 memory + 3 wiki) in the global registry', () => {
+  it('registers all 23 tools (4 tasks + 12 memory + 7 wiki) in the global registry', () => {
     const names = new Set([...taskTools, ...memoryTools, ...wikiTools].map((t) => t.name));
-    expect(names.size).toBe(14);
+    expect(names.size).toBe(23);
     for (const name of names) {
       expect(allTools.some((t) => t.name === name)).toBe(true);
     }
@@ -93,5 +111,327 @@ describe('tasks/memory/wiki tools build the right request', () => {
       kind: undefined,
       topK: undefined,
     });
+  });
+
+  it('memory_add builds POST /workspaces/{ws}/memories with new fields (retrieval/slug/eventDate/metadata)', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(201, { publicId: 'mem_1' }));
+    const client = new BranorOsClient(
+      { apiBaseUrl: 'http://api.test', apiPrefix: '/api/v1', apiKey: 'ak_test' },
+      fetchMock as unknown as typeof fetch,
+    );
+    const endpoints = createEndpoints(client, { workspaceId: 'ws_pub_1' });
+
+    const schema = z.object(memoryAdd.inputSchema);
+    const parsed = schema.parse({
+      scope: 'CLIENT',
+      memoryType: 'FACT',
+      content: 'FACT: cliente prefere reunião às sextas',
+      sourceType: 'MANUAL',
+      slug: 'cliente-x-reuniao-sexta',
+      eventDate: '2026-07-01T00:00:00.000Z',
+      metadata: { origem: 'call' },
+      retrieval: {
+        exactSearchKeys: ['reuniao'],
+        priority: 'high',
+      },
+    });
+    await memoryAdd.handler(parsed, endpoints);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('http://api.test/api/v1/workspaces/ws_pub_1/memories');
+    expect(init.method).toBe('POST');
+    const body = JSON.parse(init.body as string);
+    expect(body.slug).toBe('cliente-x-reuniao-sexta');
+    expect(body.eventDate).toBe('2026-07-01T00:00:00.000Z');
+    expect(body.metadata).toEqual({ origem: 'call' });
+    expect(body.retrieval).toEqual({ exactSearchKeys: ['reuniao'], priority: 'high' });
+  });
+
+  it('memory_update builds PATCH /workspaces/{ws}/memories/{id} with isActive/confidence/retrieval', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { publicId: 'mem_1' }));
+    const client = new BranorOsClient(
+      { apiBaseUrl: 'http://api.test', apiPrefix: '/api/v1', apiKey: 'ak_test' },
+      fetchMock as unknown as typeof fetch,
+    );
+    const endpoints = createEndpoints(client, { workspaceId: 'ws_pub_1' });
+
+    const schema = z.object(memoryUpdate.inputSchema);
+    const parsed = schema.parse({
+      id: 'mem_1',
+      isActive: true,
+      confidence: 'SYNTHETIC',
+      retrieval: { priority: 'low' },
+    });
+    await memoryUpdate.handler(parsed, endpoints);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('http://api.test/api/v1/workspaces/ws_pub_1/memories/mem_1');
+    expect(init.method).toBe('PATCH');
+    const body = JSON.parse(init.body as string);
+    expect(body.isActive).toBe(true);
+    expect(body.confidence).toBe('SYNTHETIC');
+    expect(body.retrieval).toEqual({ priority: 'low' });
+  });
+
+  it('memory_consolidate builds POST /workspaces/{ws}/memories/consolidate', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(202, { accepted: true }));
+    const client = new BranorOsClient(
+      { apiBaseUrl: 'http://api.test', apiPrefix: '/api/v1', apiKey: 'ak_test' },
+      fetchMock as unknown as typeof fetch,
+    );
+    const endpoints = createEndpoints(client, { workspaceId: 'ws_pub_1' });
+
+    const schema = z.object(memoryConsolidate.inputSchema);
+    const parsed = schema.parse({ material: 'transcript...', sessionId: 'sess_1' });
+    await memoryConsolidate.handler(parsed, endpoints);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('http://api.test/api/v1/workspaces/ws_pub_1/memories/consolidate');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body as string)).toEqual({
+      material: 'transcript...',
+      sessionId: 'sess_1',
+      agentId: undefined,
+      clientSlug: undefined,
+    });
+  });
+
+  it('memory_link_add builds POST /workspaces/{ws}/memories/{id}/links', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(201, { id: 'link_1' }));
+    const client = new BranorOsClient(
+      { apiBaseUrl: 'http://api.test', apiPrefix: '/api/v1', apiKey: 'ak_test' },
+      fetchMock as unknown as typeof fetch,
+    );
+    const endpoints = createEndpoints(client, { workspaceId: 'ws_pub_1' });
+
+    const schema = z.object(memoryLinkAdd.inputSchema);
+    const parsed = schema.parse({
+      id: 'mem_1',
+      targetType: 'MEMORY',
+      targetMemoryId: 'mem_2',
+      linkType: 'SUPERSEDES',
+    });
+    await memoryLinkAdd.handler(parsed, endpoints);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('http://api.test/api/v1/workspaces/ws_pub_1/memories/mem_1/links');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body as string)).toEqual({
+      targetType: 'MEMORY',
+      targetMemoryId: 'mem_2',
+      targetNodeId: undefined,
+      targetRef: undefined,
+      linkType: 'SUPERSEDES',
+      reason: undefined,
+    });
+  });
+
+  it('memory_links_list builds GET /workspaces/{ws}/memories/{id}/links', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { items: [] }));
+    const client = new BranorOsClient(
+      { apiBaseUrl: 'http://api.test', apiPrefix: '/api/v1', apiKey: 'ak_test' },
+      fetchMock as unknown as typeof fetch,
+    );
+    const endpoints = createEndpoints(client, { workspaceId: 'ws_pub_1' });
+
+    const schema = z.object(memoryLinksList.inputSchema);
+    const parsed = schema.parse({ id: 'mem_1' });
+    await memoryLinksList.handler(parsed, endpoints);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('http://api.test/api/v1/workspaces/ws_pub_1/memories/mem_1/links');
+    expect(init.method).toBe('GET');
+  });
+
+  it('memory_link_delete builds DELETE /workspaces/{ws}/memories/links/{linkId}', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { ok: true }));
+    const client = new BranorOsClient(
+      { apiBaseUrl: 'http://api.test', apiPrefix: '/api/v1', apiKey: 'ak_test' },
+      fetchMock as unknown as typeof fetch,
+    );
+    const endpoints = createEndpoints(client, { workspaceId: 'ws_pub_1' });
+
+    const schema = z.object(memoryLinkDelete.inputSchema);
+    const parsed = schema.parse({ linkId: 'link_1' });
+    await memoryLinkDelete.handler(parsed, endpoints);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('http://api.test/api/v1/workspaces/ws_pub_1/memories/links/link_1');
+    expect(init.method).toBe('DELETE');
+  });
+
+  it('memory_list builds GET /workspaces/{ws}/memories with query', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { items: [] }));
+    const client = new BranorOsClient(
+      { apiBaseUrl: 'http://api.test', apiPrefix: '/api/v1', apiKey: 'ak_test' },
+      fetchMock as unknown as typeof fetch,
+    );
+    const endpoints = createEndpoints(client, { workspaceId: 'ws_pub_1' });
+
+    const schema = z.object(memoryList.inputSchema);
+    const parsed = schema.parse({ clientSlug: 'acme' });
+    await memoryList.handler(parsed, endpoints);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('http://api.test/api/v1/workspaces/ws_pub_1/memories?clientSlug=acme');
+    expect(init.method).toBe('GET');
+  });
+
+  it('wiki_node_write UPDATE with name+parentId builds PATCH with both fields in body', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { id: 'node_1' }));
+    const client = new BranorOsClient(
+      { apiBaseUrl: 'http://api.test', apiPrefix: '/api/v1', apiKey: 'ak_test' },
+      fetchMock as unknown as typeof fetch,
+    );
+    const endpoints = createEndpoints(client, { workspaceId: 'ws_pub_1' });
+
+    const schema = z.object(wikiNodeWrite.inputSchema);
+    const parsed = schema.parse({
+      wikiId: 'wk_1',
+      nodeId: 'node_1',
+      name: 'novo-nome.md',
+      parentId: 'folder_1',
+    });
+    await wikiNodeWrite.handler(parsed, endpoints);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('http://api.test/api/v1/workspaces/ws_pub_1/wikis/wk_1/nodes/node_1');
+    expect(init.method).toBe('PATCH');
+    const body = JSON.parse(init.body as string);
+    expect(body).toEqual({ name: 'novo-nome.md', parentId: 'folder_1' });
+  });
+
+  it('wiki_node_write UPDATE moving to root sends parentId: null explicitly in the body', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { id: 'node_1' }));
+    const client = new BranorOsClient(
+      { apiBaseUrl: 'http://api.test', apiPrefix: '/api/v1', apiKey: 'ak_test' },
+      fetchMock as unknown as typeof fetch,
+    );
+    const endpoints = createEndpoints(client, { workspaceId: 'ws_pub_1' });
+
+    const schema = z.object(wikiNodeWrite.inputSchema);
+    const parsed = schema.parse({
+      wikiId: 'wk_1',
+      nodeId: 'node_1',
+      parentId: null,
+    });
+    await wikiNodeWrite.handler(parsed, endpoints);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(init.body as string);
+    expect(body).toEqual({ parentId: null });
+  });
+
+  it('wiki_node_write CREATE with type=FOLDER+tags+sortOrder builds POST with those fields', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(201, { id: 'node_2' }));
+    const client = new BranorOsClient(
+      { apiBaseUrl: 'http://api.test', apiPrefix: '/api/v1', apiKey: 'ak_test' },
+      fetchMock as unknown as typeof fetch,
+    );
+    const endpoints = createEndpoints(client, { workspaceId: 'ws_pub_1' });
+
+    const schema = z.object(wikiNodeWrite.inputSchema);
+    const parsed = schema.parse({
+      wikiId: 'wk_1',
+      name: 'projetos',
+      type: 'FOLDER',
+      tags: ['ativo'],
+      sortOrder: 3,
+    });
+    await wikiNodeWrite.handler(parsed, endpoints);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('http://api.test/api/v1/workspaces/ws_pub_1/wikis/wk_1/nodes');
+    expect(init.method).toBe('POST');
+    const body = JSON.parse(init.body as string);
+    expect(body).toEqual({
+      type: 'FOLDER',
+      name: 'projetos',
+      kind: 'TEXT',
+      tags: ['ativo'],
+      sortOrder: 3,
+    });
+  });
+
+  it('wiki_list builds GET /workspaces/{ws}/wikis', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { items: [] }));
+    const client = new BranorOsClient(
+      { apiBaseUrl: 'http://api.test', apiPrefix: '/api/v1', apiKey: 'ak_test' },
+      fetchMock as unknown as typeof fetch,
+    );
+    const endpoints = createEndpoints(client, { workspaceId: 'ws_pub_1' });
+
+    const schema = z.object(wikiList.inputSchema);
+    const parsed = schema.parse({});
+    await wikiList.handler(parsed, endpoints);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('http://api.test/api/v1/workspaces/ws_pub_1/wikis');
+    expect(init.method).toBe('GET');
+  });
+
+  it('wiki_tree builds GET /workspaces/{ws}/wikis/{wikiId}/tree', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { nodes: [] }));
+    const client = new BranorOsClient(
+      { apiBaseUrl: 'http://api.test', apiPrefix: '/api/v1', apiKey: 'ak_test' },
+      fetchMock as unknown as typeof fetch,
+    );
+    const endpoints = createEndpoints(client, { workspaceId: 'ws_pub_1' });
+
+    const schema = z.object(wikiTree.inputSchema);
+    const parsed = schema.parse({ wikiId: 'wk_1' });
+    await wikiTree.handler(parsed, endpoints);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('http://api.test/api/v1/workspaces/ws_pub_1/wikis/wk_1/tree');
+    expect(init.method).toBe('GET');
+  });
+
+  it('wiki_node_delete builds DELETE /workspaces/{ws}/wikis/{wikiId}/nodes/{nodeId}', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { ok: true }));
+    const client = new BranorOsClient(
+      { apiBaseUrl: 'http://api.test', apiPrefix: '/api/v1', apiKey: 'ak_test' },
+      fetchMock as unknown as typeof fetch,
+    );
+    const endpoints = createEndpoints(client, { workspaceId: 'ws_pub_1' });
+
+    const schema = z.object(wikiNodeDelete.inputSchema);
+    const parsed = schema.parse({ wikiId: 'wk_1', nodeId: 'node_1' });
+    await wikiNodeDelete.handler(parsed, endpoints);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('http://api.test/api/v1/workspaces/ws_pub_1/wikis/wk_1/nodes/node_1');
+    expect(init.method).toBe('DELETE');
+  });
+
+  it('wiki_graph builds GET /workspaces/{ws}/wikis/{wikiId}/graph', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { nodes: [], edges: [] }));
+    const client = new BranorOsClient(
+      { apiBaseUrl: 'http://api.test', apiPrefix: '/api/v1', apiKey: 'ak_test' },
+      fetchMock as unknown as typeof fetch,
+    );
+    const endpoints = createEndpoints(client, { workspaceId: 'ws_pub_1' });
+
+    const schema = z.object(wikiGraph.inputSchema);
+    const parsed = schema.parse({ wikiId: 'wk_1' });
+    await wikiGraph.handler(parsed, endpoints);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('http://api.test/api/v1/workspaces/ws_pub_1/wikis/wk_1/graph');
+    expect(init.method).toBe('GET');
   });
 });

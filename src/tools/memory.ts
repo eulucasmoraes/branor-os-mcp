@@ -19,6 +19,29 @@ const MEMORY_TYPE_VALUES = [
 
 const MEMORY_VISIBILITY_VALUES = ['PRIVATE', 'WORKSPACE', 'ORGANIZATION'] as const;
 
+const RETRIEVAL_SCHEMA = z
+  .object({
+    exactSearchKeys: z
+      .array(z.string())
+      .optional()
+      .describe('Chaves de busca exata (match literal) para recall dessa memória'),
+    fuzzySearchKeys: z
+      .array(z.string())
+      .optional()
+      .describe('Chaves de busca aproximada (fuzzy) para recall dessa memória'),
+    loadWhen: z
+      .record(z.string(), z.unknown())
+      .optional()
+      .describe('Condições (chave/valor) sob as quais essa memória deve ser pré-carregada'),
+    priority: z
+      .enum(['high', 'medium', 'low'])
+      .optional()
+      .describe('Prioridade de recall/carregamento da memória'),
+    aliases: z.array(z.string()).optional().describe('Apelidos/sinônimos para recall'),
+  })
+  .strict()
+  .describe('Metadados de recuperação — controla como/quando a memória é recarregada');
+
 export const memorySearch = defineTool({
   name: 'memory_search',
   description: `Busca semântica nas Memórias do agente/usuário. ${MEMORY_DESC} Retorna memórias relevantes ordenadas por similaridade (score).`,
@@ -79,6 +102,22 @@ export const memoryAdd = defineTool({
     importance: z.number().min(0).max(1).optional(),
     confidence: z.enum(['EVIDENCE', 'SYNTHETIC']).optional(),
     sourceRef: z.string().optional().describe('Referência da origem'),
+    slug: z.string().optional().describe('Slug único opcional da memória'),
+    retrieval: RETRIEVAL_SCHEMA.optional(),
+    wikiId: z.string().optional().describe('ID da wiki relacionada (uuid)'),
+    wikiNodeId: z.string().optional().describe('ID do nó da wiki relacionado (uuid)'),
+    sourceChunkId: z
+      .string()
+      .optional()
+      .describe('ID do chunk de origem, quando a memória vem de um documento indexado (uuid)'),
+    eventDate: z
+      .string()
+      .optional()
+      .describe('Data ISO do evento/fato descrito (quando diferente da data de criação)'),
+    metadata: z
+      .record(z.string(), z.unknown())
+      .optional()
+      .describe('Metadados livres em formato chave/valor'),
   },
   handler: async (input, endpoints) =>
     endpoints.createMemory({
@@ -95,6 +134,13 @@ export const memoryAdd = defineTool({
       importance: input.importance,
       confidence: input.confidence,
       sourceRef: input.sourceRef,
+      slug: input.slug,
+      retrieval: input.retrieval,
+      wikiId: input.wikiId,
+      wikiNodeId: input.wikiNodeId,
+      sourceChunkId: input.sourceChunkId,
+      eventDate: input.eventDate,
+      metadata: input.metadata,
     }),
 });
 
@@ -131,7 +177,7 @@ export const memoryBootstrap = defineTool({
       limit: input.limit,
     });
     const list = Array.isArray(result) ? result : [];
-    return list.map((m: any) => ({
+    return list.map((m: Record<string, unknown>) => ({
       publicId: m.publicId,
       memoryType: m.memoryType,
       importance: m.importance,
@@ -171,6 +217,19 @@ export const memoryUpdate = defineTool({
       ),
     clientSlug: z.string().optional().describe('Slug do cliente para filtrar/isolar'),
     agentId: z.string().optional().describe('ID do agente para filtrar/isolar'),
+    confidence: z
+      .enum(['EVIDENCE', 'SYNTHETIC'])
+      .optional()
+      .describe('Nova confiança: EVIDENCE (observado) ou SYNTHETIC (inferido)'),
+    retrieval: RETRIEVAL_SCHEMA.optional(),
+    metadata: z
+      .record(z.string(), z.unknown())
+      .optional()
+      .describe('Novos metadados livres em formato chave/valor (substitui os existentes)'),
+    isActive: z
+      .boolean()
+      .optional()
+      .describe('Reativa uma memória soft-deleted quando true'),
   },
   handler: async (input, endpoints) => {
     if (
@@ -180,10 +239,14 @@ export const memoryUpdate = defineTool({
       input.memoryType === undefined &&
       input.scope === undefined &&
       input.visibility === undefined &&
-      input.importance === undefined
+      input.importance === undefined &&
+      input.confidence === undefined &&
+      input.retrieval === undefined &&
+      input.metadata === undefined &&
+      input.isActive === undefined
     ) {
       throw new Error(
-        'Informe ao menos um campo para editar: content, summary, slug, memoryType, scope, visibility ou importance.',
+        'Informe ao menos um campo para editar: content, summary, slug, memoryType, scope, visibility, importance, confidence, retrieval, metadata ou isActive.',
       );
     }
     return endpoints.updateMemory(
@@ -196,6 +259,10 @@ export const memoryUpdate = defineTool({
         scope: input.scope,
         visibility: input.visibility,
         importance: input.importance,
+        confidence: input.confidence,
+        retrieval: input.retrieval,
+        metadata: input.metadata,
+        isActive: input.isActive,
       },
       { clientSlug: input.clientSlug, agentId: input.agentId },
     );
@@ -268,7 +335,7 @@ export const memoryGcCandidates = defineTool({
       agentId: input.agentId,
     });
     const list = Array.isArray(result) ? result : [];
-    return list.map((m: any) => ({
+    return list.map((m: Record<string, unknown>) => ({
       publicId: m.publicId,
       memoryType: m.memoryType,
       importance: m.importance,
@@ -280,6 +347,96 @@ export const memoryGcCandidates = defineTool({
   },
 });
 
+export const memoryConsolidate = defineTool({
+  name: 'memory_consolidate',
+  description:
+    'Enfileira um job de consolidação de memória a partir de material bruto (ex.: transcrição de conversa). O backend processa assincronamente e extrai uma ou mais memórias atômicas do material — não retorna as memórias já criadas, só confirma o enfileiramento.',
+  inputSchema: {
+    material: z.string().min(1).describe('Material bruto a consolidar (ex.: transcrição)'),
+    sessionId: z.string().min(1).describe('ID da sessão de origem do material'),
+    agentId: z.string().optional().describe('ID do agente relacionado'),
+    clientSlug: z.string().optional().describe('Slug do cliente relacionado'),
+  },
+  handler: async (input, endpoints) =>
+    endpoints.consolidateMemory({
+      material: input.material,
+      sessionId: input.sessionId,
+      agentId: input.agentId,
+      clientSlug: input.clientSlug,
+    }),
+});
+
+const MEMORY_LINK_TARGET_TYPES = ['MEMORY', 'WIKI_NODE'] as const;
+const MEMORY_LINK_TYPES = [
+  'DEPENDS_ON',
+  'ELABORATED_BY',
+  'SUPPORTS',
+  'SUPERSEDES',
+  'RELATES_TO',
+  'CONTRADICTS',
+] as const;
+
+export const memoryLinkAdd = defineTool({
+  name: 'memory_link_add',
+  description:
+    'Cria um link no grafo de memórias, ligando uma memória de origem a outra memória ou a um nó da wiki. Tipos de link: DEPENDS_ON (depende de), ELABORATED_BY (elaborada por), SUPPORTS (apoia), SUPERSEDES (substitui), RELATES_TO (relacionada a), CONTRADICTS (contradiz). Use para modelar relações explícitas entre fatos/decisões.',
+  inputSchema: {
+    id: z.string().min(1).describe('ID ou publicId da memória de origem'),
+    targetType: z.enum(MEMORY_LINK_TARGET_TYPES).describe('Tipo do alvo do link'),
+    targetMemoryId: z
+      .string()
+      .optional()
+      .describe('ID da memória alvo (quando targetType=MEMORY)'),
+    targetNodeId: z
+      .string()
+      .optional()
+      .describe('ID do nó da wiki alvo (quando targetType=WIKI_NODE)'),
+    targetRef: z.string().optional().describe('Referência textual alternativa do alvo'),
+    linkType: z.enum(MEMORY_LINK_TYPES).describe('Natureza da relação entre origem e alvo'),
+    reason: z.string().optional().describe('Motivo/explicação do link'),
+  },
+  handler: async (input, endpoints) =>
+    endpoints.createMemoryLink(input.id, {
+      targetType: input.targetType,
+      targetMemoryId: input.targetMemoryId,
+      targetNodeId: input.targetNodeId,
+      targetRef: input.targetRef,
+      linkType: input.linkType,
+      reason: input.reason,
+    }),
+});
+
+export const memoryLinksList = defineTool({
+  name: 'memory_links_list',
+  description:
+    'Lista os links de uma memória no grafo de memórias (relações DEPENDS_ON, SUPERSEDES, RELATES_TO etc. com outras memórias ou nós da wiki).',
+  inputSchema: {
+    id: z.string().min(1).describe('ID ou publicId da memória de origem'),
+  },
+  handler: async (input, endpoints) => endpoints.listMemoryLinks(input.id),
+});
+
+export const memoryLinkDelete = defineTool({
+  name: 'memory_link_delete',
+  description: 'Remove um link do grafo de memórias pelo seu ID.',
+  inputSchema: {
+    linkId: z.string().min(1).describe('ID do link a remover'),
+  },
+  handler: async (input, endpoints) => endpoints.deleteMemoryLink(input.linkId),
+});
+
+export const memoryList = defineTool({
+  name: 'memory_list',
+  description:
+    'Lista memórias do escopo de forma simples (não-semântica, sem ordenação por importância) — para carregar contexto por importância use memory_bootstrap; para busca por relevância use memory_search.',
+  inputSchema: {
+    clientSlug: z.string().optional().describe('Slug do cliente para filtrar memórias'),
+    agentId: z.string().optional().describe('ID do agente para filtrar memórias'),
+  },
+  handler: async (input, endpoints) =>
+    endpoints.listMemories({ clientSlug: input.clientSlug, agentId: input.agentId }),
+});
+
 export const memoryTools = [
   memorySearch,
   memoryAdd,
@@ -288,4 +445,9 @@ export const memoryTools = [
   memoryGcCandidates,
   memoryGet,
   memoryDeactivate,
+  memoryConsolidate,
+  memoryLinkAdd,
+  memoryLinksList,
+  memoryLinkDelete,
+  memoryList,
 ];

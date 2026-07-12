@@ -46,10 +46,10 @@ export function buildServer(
   for (const tool of allTools) {
     toolNames.push(tool.name);
 
-    const inputSchema: Record<string, z.ZodTypeAny> = {
-      ...tool.inputSchema,
-      workspace_public_id: WORKSPACE_PUBLIC_ID_FIELD,
-    };
+    const inputSchema: Record<string, z.ZodTypeAny> = { ...tool.inputSchema };
+    if (tool.workspaceScoped !== false) {
+      inputSchema.workspace_public_id = WORKSPACE_PUBLIC_ID_FIELD;
+    }
 
     server.registerTool(
       tool.name,

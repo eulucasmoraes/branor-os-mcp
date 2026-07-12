@@ -43,21 +43,36 @@ export const wikiNodeRead = defineTool({
 
 export const wikiNodeWrite = defineTool({
   name: 'wiki_node_write',
-  description: `Cria ou atualiza uma nota da Biblioteca (wiki node). ${LIBRARY_DESC} Informe nodeId para ATUALIZAR uma nota existente (rawContent/tags/name); omita nodeId para CRIAR uma nova nota (requer name; parentId opcional — omitido cria na raiz da wiki).`,
+  description: `Cria ou atualiza um node da Biblioteca (wiki node — arquivo ou pasta). ${LIBRARY_DESC} Informe nodeId para ATUALIZAR um node existente (permite renomear via name, mover via parentId — null move para a raiz, reordenar via sortOrder, editar rawContent e tags); omita nodeId para CRIAR um novo node (requer name; type default FILE, use FOLDER para criar pastas; parentId opcional — omitido cria na raiz da wiki; aceita tags e sortOrder na criação).`,
   inputSchema: {
     wikiId: z.string().describe('ID da wiki'),
     nodeId: z.string().optional().describe('ID ou publicId do node a atualizar. Omitir para criar.'),
-    name: z.string().optional().describe('Nome do arquivo (obrigatório ao criar)'),
-    parentId: z.string().optional().describe('ID da pasta pai (folder node). Omitir para raiz.'),
-    rawContent: z.string().describe('Conteúdo completo da nota (markdown)'),
+    name: z.string().optional().describe('Nome do node (obrigatório ao criar; opcional ao atualizar para renomear)'),
+    type: z
+      .enum(['FOLDER', 'FILE'])
+      .optional()
+      .describe("Tipo do node ao criar (padrão 'FILE'). Ignorado ao atualizar."),
+    parentId: z
+      .string()
+      .nullable()
+      .optional()
+      .describe(
+        'ID da pasta pai (folder node). Ao criar: omitir cria na raiz. Ao atualizar: informe null explicitamente para mover para a raiz; omita para não mover.',
+      ),
+    extension: z.string().optional().describe('Extensão do arquivo (somente ao criar)'),
+    rawContent: z.string().optional().describe('Conteúdo completo da nota (markdown)'),
     kind: z.enum(['TEXT', 'CODE']).optional().describe('Tipo de conteúdo (somente ao criar)'),
+    sortOrder: z.number().int().optional().describe('Posição de ordenação entre os irmãos'),
     tags: z.array(z.string()).optional().describe('Tags da nota'),
   },
   handler: async (input, endpoints) => {
     if (input.nodeId) {
       return endpoints.updateWikiNode(input.wikiId, input.nodeId, {
-        rawContent: input.rawContent,
-        tags: input.tags,
+        ...(input.name !== undefined && { name: input.name }),
+        ...(input.parentId !== undefined && { parentId: input.parentId }),
+        ...(input.rawContent !== undefined && { rawContent: input.rawContent }),
+        ...(input.sortOrder !== undefined && { sortOrder: input.sortOrder }),
+        ...(input.tags !== undefined && { tags: input.tags }),
       });
     }
 
@@ -66,13 +81,61 @@ export const wikiNodeWrite = defineTool({
     }
 
     return endpoints.createWikiNode(input.wikiId, {
-      type: 'FILE',
+      type: input.type ?? 'FILE',
       name: input.name,
-      parentId: input.parentId,
+      ...(typeof input.parentId === 'string' && { parentId: input.parentId }),
       kind: input.kind ?? 'TEXT',
-      rawContent: input.rawContent,
+      ...(input.rawContent !== undefined && { rawContent: input.rawContent }),
+      ...(input.extension !== undefined && { extension: input.extension }),
+      ...(input.sortOrder !== undefined && { sortOrder: input.sortOrder }),
+      ...(input.tags !== undefined && { tags: input.tags }),
     });
   },
 });
 
-export const wikiTools = [wikiSearch, wikiNodeRead, wikiNodeWrite];
+export const wikiList = defineTool({
+  name: 'wiki_list',
+  description:
+    'Lista as wikis (Bibliotecas) do workspace. Use para descobrir o wikiId exigido pelas demais tools de Biblioteca.',
+  inputSchema: {},
+  handler: async (_input, endpoints) => endpoints.listWikis(),
+});
+
+export const wikiTree = defineTool({
+  name: 'wiki_tree',
+  description: `Retorna a árvore hierárquica de nodes (pastas/arquivos) de uma wiki, para navegação sem busca semântica. ${LIBRARY_DESC}`,
+  inputSchema: {
+    wikiId: z.string().describe('ID da wiki'),
+  },
+  handler: async (input, endpoints) => endpoints.getWikiTree(input.wikiId),
+});
+
+export const wikiNodeDelete = defineTool({
+  name: 'wiki_node_delete',
+  description:
+    'Remove (soft-delete recursivo) um node da Biblioteca e todos os seus descendentes.',
+  inputSchema: {
+    wikiId: z.string().describe('ID da wiki'),
+    nodeId: z.string().describe('ID ou publicId do node a remover'),
+  },
+  handler: async (input, endpoints) => endpoints.deleteWikiNode(input.wikiId, input.nodeId),
+});
+
+export const wikiGraph = defineTool({
+  name: 'wiki_graph',
+  description: `Retorna o grafo de nodes + arestas resolvidas (links entre notas) de uma wiki. ${LIBRARY_DESC}`,
+  inputSchema: {
+    wikiId: z.string().describe('ID da wiki'),
+  },
+  handler: async (input, endpoints) => endpoints.getWikiGraph(input.wikiId),
+});
+
+export const wikiTools = [
+  wikiSearch,
+  wikiNodeRead,
+  wikiNodeWrite,
+  wikiList,
+  wikiTree,
+  wikiNodeDelete,
+  wikiGraph,
+];

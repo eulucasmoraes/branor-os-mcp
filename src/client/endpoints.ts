@@ -26,6 +26,21 @@ export function createEndpoints(client: BranorOsClient, ctx: CallContext) {
   const wp = (suffix: string) => client.workspacePath(ctx.workspaceId, suffix);
 
   return {
+    // ── Workspaces ──────────────────────────────────────────────────────
+
+    /**
+     * GET /workspaces — workspaces acessíveis pela API key (com key de
+     * organização, todos os workspaces da org). NÃO scoped a workspace —
+     * path direto, sem passar por wp(). Backing tool: workspace_list.
+     */
+    listWorkspaces: () => client.get<unknown>('/workspaces'),
+
+    /**
+     * GET /workspaces/{workspaceId}/members — membros do workspace (papel +
+     * usuário). Backing tool: workspace_members.
+     */
+    listWorkspaceMembers: () => client.get<unknown>(wp('/members')),
+
     /**
      * GET /workspaces/{workspaceId}/creative-assets — the creative asset
      * library for this workspace, with optional type/status/search
@@ -414,7 +429,73 @@ export function createEndpoints(client: BranorOsClient, ctx: CallContext) {
       importance?: number;
       confidence?: string;
       sourceRef?: string;
+      slug?: string;
+      retrieval?: {
+        exactSearchKeys?: string[];
+        fuzzySearchKeys?: string[];
+        loadWhen?: Record<string, unknown>;
+        priority?: 'high' | 'medium' | 'low';
+        aliases?: string[];
+      };
+      wikiId?: string;
+      wikiNodeId?: string;
+      sourceChunkId?: string;
+      eventDate?: string;
+      metadata?: Record<string, unknown>;
     }) => client.post<unknown>(wp('/memories'), body),
+
+    /**
+     * GET /workspaces/{workspaceId}/memories — simple, non-semantic listing
+     * of memories in scope (no importance ordering; see bootstrapMemory for
+     * that). Backing tool: memory_list.
+     */
+    listMemories: (query?: { clientSlug?: string; agentId?: string }) =>
+      client.get<unknown>(wp('/memories'), {
+        clientSlug: query?.clientSlug,
+        agentId: query?.agentId,
+      }),
+
+    /**
+     * POST /workspaces/{workspaceId}/memories/consolidate — enqueues a job
+     * that consolidates raw material (e.g. a conversation transcript) into
+     * one or more memories. Backing tool: memory_consolidate.
+     */
+    consolidateMemory: (body: {
+      material: string;
+      sessionId: string;
+      agentId?: string;
+      clientSlug?: string;
+    }) => client.post<unknown>(wp('/memories/consolidate'), body),
+
+    /**
+     * POST /workspaces/{workspaceId}/memories/{id}/links — link a memory to
+     * another memory or wiki node in the memory graph (DEPENDS_ON,
+     * SUPERSEDES, RELATES_TO, ...). Backing tool: memory_link_add.
+     */
+    createMemoryLink: (
+      id: string,
+      body: {
+        targetType: string;
+        targetMemoryId?: string;
+        targetNodeId?: string;
+        targetRef?: string;
+        linkType: string;
+        reason?: string;
+      },
+    ) => client.post<unknown>(wp(`/memories/${id}/links`), body),
+
+    /**
+     * GET /workspaces/{workspaceId}/memories/{id}/links — list the links
+     * from a memory in the memory graph. Backing tool: memory_links_list.
+     */
+    listMemoryLinks: (id: string) => client.get<unknown>(wp(`/memories/${id}/links`)),
+
+    /**
+     * DELETE /workspaces/{workspaceId}/memories/links/{linkId} — remove a
+     * link from the memory graph. Backing tool: memory_link_delete.
+     */
+    deleteMemoryLink: (linkId: string) =>
+      client.delete<unknown>(wp(`/memories/links/${linkId}`)),
 
 
 
@@ -446,6 +527,16 @@ export function createEndpoints(client: BranorOsClient, ctx: CallContext) {
         scope?: string;
         importance?: number;
         visibility?: string;
+        confidence?: string;
+        retrieval?: {
+          exactSearchKeys?: string[];
+          fuzzySearchKeys?: string[];
+          loadWhen?: Record<string, unknown>;
+          priority?: 'high' | 'medium' | 'low';
+          aliases?: string[];
+        };
+        metadata?: Record<string, unknown>;
+        isActive?: boolean;
       },
       filters?: { clientSlug?: string; agentId?: string },
     ) =>
@@ -558,8 +649,8 @@ export function createEndpoints(client: BranorOsClient, ctx: CallContext) {
 
     /**
      * POST /workspaces/{workspaceId}/wikis/{wikiId}/nodes — create a new
-     * wiki node (FILE). Backing tool: wiki_node_write (when nodeId is
-     * omitted).
+     * wiki node (FILE or FOLDER). Backing tool: wiki_node_write (when
+     * nodeId is omitted).
      */
     createWikiNode: (
       wikiId: string,
@@ -567,21 +658,59 @@ export function createEndpoints(client: BranorOsClient, ctx: CallContext) {
         type: string;
         name: string;
         parentId?: string;
+        extension?: string;
         kind?: string;
         rawContent?: string;
+        sortOrder?: number;
+        tags?: string[];
       },
     ) => client.post<unknown>(wp(`/wikis/${wikiId}/nodes`), body),
 
     /**
      * PATCH /workspaces/{workspaceId}/wikis/{wikiId}/nodes/{nodeId} —
-     * update an existing wiki node's content/tags. Backing tool:
-     * wiki_node_write (when nodeId is provided).
+     * update an existing wiki node (rename/move/reorder/content/tags).
+     * Backing tool: wiki_node_write (when nodeId is provided).
      */
     updateWikiNode: (
       wikiId: string,
       nodeId: string,
-      body: { rawContent?: string; tags?: string[] },
+      body: {
+        name?: string;
+        parentId?: string | null;
+        rawContent?: string;
+        sortOrder?: number;
+        tags?: string[];
+      },
     ) => client.patch<unknown>(wp(`/wikis/${wikiId}/nodes/${nodeId}`), body),
+
+    /**
+     * DELETE /workspaces/{workspaceId}/wikis/{wikiId}/nodes/{nodeId} —
+     * soft-delete a node and its descendants recursively. Backing tool:
+     * wiki_node_delete.
+     */
+    deleteWikiNode: (wikiId: string, nodeId: string) =>
+      client.delete<unknown>(wp(`/wikis/${wikiId}/nodes/${nodeId}`)),
+
+    /**
+     * GET /workspaces/{workspaceId}/wikis — list the wikis (Bibliotecas)
+     * available in the workspace. Backing tool: wiki_list.
+     */
+    listWikis: () => client.get<unknown>(wp('/wikis')),
+
+    /**
+     * GET /workspaces/{workspaceId}/wikis/{wikiId}/tree — hierarchical
+     * tree of nodes (folders/files) for navigation without semantic
+     * search. Backing tool: wiki_tree.
+     */
+    getWikiTree: (wikiId: string) =>
+      client.get<unknown>(wp(`/wikis/${wikiId}/tree`)),
+
+    /**
+     * GET /workspaces/{workspaceId}/wikis/{wikiId}/graph — graph of nodes
+     * + resolved edges (links between notes). Backing tool: wiki_graph.
+     */
+    getWikiGraph: (wikiId: string) =>
+      client.get<unknown>(wp(`/wikis/${wikiId}/graph`)),
   };
 }
 

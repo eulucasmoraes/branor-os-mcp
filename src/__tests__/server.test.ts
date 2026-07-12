@@ -36,7 +36,7 @@ describe('MCP server smoke test', () => {
     expect(tools.map((t) => t.name)).toContain('list_creative_assets');
   });
 
-  it('injects workspace_public_id as a required input on every tool', async () => {
+  it('injects workspace_public_id as a required input on every workspace-scoped tool', async () => {
     const { client } = await connectedClient(fetchRecording({ calls: [] }));
     const { tools } = await client.listTools();
     const tool = tools.find((t) => t.name === 'list_creative_assets')!;
@@ -45,6 +45,21 @@ describe('MCP server smoke test', () => {
     const required = tool.inputSchema.required as string[];
     expect(props).toHaveProperty('workspace_public_id');
     expect(required).toContain('workspace_public_id');
+  });
+
+  it('workspace_list is the one exception: no workspace_public_id (it discovers the id), while workspace_members still requires it', async () => {
+    const { client } = await connectedClient(fetchRecording({ calls: [] }));
+    const { tools } = await client.listTools();
+
+    const listTool = tools.find((t) => t.name === 'workspace_list')!;
+    const listProps = listTool.inputSchema.properties as Record<string, unknown>;
+    expect(listProps).not.toHaveProperty('workspace_public_id');
+
+    const membersTool = tools.find((t) => t.name === 'workspace_members')!;
+    const membersProps = membersTool.inputSchema.properties as Record<string, unknown>;
+    const membersRequired = membersTool.inputSchema.required as string[];
+    expect(membersProps).toHaveProperty('workspace_public_id');
+    expect(membersRequired).toContain('workspace_public_id');
   });
 
   it('strips workspace_public_id before it reaches the tool handler, and scopes the call URL to that workspace', async () => {
