@@ -449,10 +449,25 @@ export function createEndpoints(client: BranorOsClient, ctx: CallContext) {
      * of memories in scope (no importance ordering; see bootstrapMemory for
      * that). Backing tool: memory_list.
      */
-    listMemories: (query?: { clientSlug?: string; agentId?: string }) =>
+    listMemories: (query?: {
+      clientSlug?: string;
+      agentId?: string;
+      memoryType?: string[];
+      scope?: string;
+      visibility?: string;
+      limit?: number;
+      cursor?: string;
+    }) =>
       client.get<unknown>(wp('/memories'), {
         clientSlug: query?.clientSlug,
         agentId: query?.agentId,
+        memoryType: query?.memoryType?.length
+          ? query.memoryType.join(',')
+          : undefined,
+        scope: query?.scope,
+        visibility: query?.visibility,
+        limit: query?.limit,
+        cursor: query?.cursor,
       }),
 
     /**
@@ -496,8 +511,6 @@ export function createEndpoints(client: BranorOsClient, ctx: CallContext) {
      */
     deleteMemoryLink: (linkId: string) =>
       client.delete<unknown>(wp(`/memories/links/${linkId}`)),
-
-
 
     /**
      * POST /workspaces/{workspaceId}/memories/search — semantic search over

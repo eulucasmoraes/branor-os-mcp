@@ -284,6 +284,82 @@ describe('tasks/memory/wiki tools build the right request', () => {
     expect(init.method).toBe('GET');
   });
 
+  it('memory_list accepts agentId only as a uuid', () => {
+    const schema = z.object(memoryList.inputSchema);
+    expect(() => schema.parse({ agentId: 'not-a-uuid' })).toThrow();
+    expect(() =>
+      schema.parse({ agentId: '11111111-1111-1111-1111-111111111111' }),
+    ).not.toThrow();
+  });
+
+  it('memory_list builds GET with memoryType/scope/visibility/limit/cursor query params', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(200, { items: [], nextCursor: null, hasMore: false }),
+    );
+    const client = new BranorOsClient(
+      { apiBaseUrl: 'http://api.test', apiPrefix: '/api/v1', apiKey: 'ak_test' },
+      fetchMock as unknown as typeof fetch,
+    );
+    const endpoints = createEndpoints(client, { workspaceId: 'ws_pub_1' });
+
+    const schema = z.object(memoryList.inputSchema);
+    const parsed = schema.parse({
+      memoryType: ['FACT', 'DECISION'],
+      scope: 'CLIENT',
+      visibility: 'WORKSPACE',
+      limit: 25,
+      cursor: 'opaque-cursor',
+    });
+    await memoryList.handler(parsed, endpoints);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const parsedUrl = new URL(url);
+    expect(parsedUrl.pathname).toBe(
+      '/api/v1/workspaces/ws_pub_1/memories',
+    );
+    expect(parsedUrl.searchParams.get('memoryType')).toBe('FACT,DECISION');
+    expect(parsedUrl.searchParams.get('scope')).toBe('CLIENT');
+    expect(parsedUrl.searchParams.get('visibility')).toBe('WORKSPACE');
+    expect(parsedUrl.searchParams.get('limit')).toBe('25');
+    expect(parsedUrl.searchParams.get('cursor')).toBe('opaque-cursor');
+    expect(init.method).toBe('GET');
+  });
+
+  it('memory_list returns the envelope (items/nextCursor/hasMore) as-is', async () => {
+    const envelope = {
+      items: [
+        {
+          publicId: 'pub-1',
+          memoryType: 'FACT',
+          importance: 0.5,
+          summary: 'hi',
+          scope: 'USER',
+          createdAt: '2024-01-01T00:00:00.000Z',
+        },
+      ],
+      nextCursor: 'next-cursor-value',
+      hasMore: true,
+    };
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, envelope));
+    const client = new BranorOsClient(
+      { apiBaseUrl: 'http://api.test', apiPrefix: '/api/v1', apiKey: 'ak_test' },
+      fetchMock as unknown as typeof fetch,
+    );
+    const endpoints = createEndpoints(client, { workspaceId: 'ws_pub_1' });
+
+    const schema = z.object(memoryList.inputSchema);
+    const parsed = schema.parse({});
+    const result = await memoryList.handler(parsed, endpoints);
+
+    expect(result).toEqual(envelope);
+  });
+
+  it('memory_list rejects limit above 200', () => {
+    const schema = z.object(memoryList.inputSchema);
+    expect(() => schema.parse({ limit: 201 })).toThrow();
+  });
+
   it('wiki_node_write UPDATE with name+parentId builds PATCH with both fields in body', async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { id: 'node_1' }));
     const client = new BranorOsClient(
