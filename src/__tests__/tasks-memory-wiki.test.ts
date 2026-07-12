@@ -5,6 +5,7 @@ import { taskTools, getTask } from '../tools/tasks.js';
 import {
   memoryTools,
   memorySearch,
+  memoryBootstrap,
   memoryAdd,
   memoryUpdate,
   memoryConsolidate,
@@ -84,8 +85,35 @@ describe('tasks/memory/wiki tools build the right request', () => {
       query: 'meta budget rule',
       clientSlug: undefined,
       agentId: undefined,
+      sessionId: undefined,
+      projectSlug: undefined,
       topK: 5,
     });
+  });
+
+  it('memory_search forwards sessionId/projectSlug in the request body', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { items: [] }));
+    const client = new BranorOsClient(
+      { apiBaseUrl: 'http://api.test', apiPrefix: '/api/v1', apiKey: 'ak_test' },
+      fetchMock as unknown as typeof fetch,
+    );
+    const endpoints = createEndpoints(client, { workspaceId: 'ws_pub_1' });
+
+    const schema = z.object(memorySearch.inputSchema);
+    const parsed = schema.parse({
+      query: 'meta budget rule',
+      sessionId: 'sess-1',
+      projectSlug: 'proj-1',
+    });
+    await memorySearch.handler(parsed, endpoints);
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toEqual(
+      expect.objectContaining({
+        sessionId: 'sess-1',
+        projectSlug: 'proj-1',
+      }),
+    );
   });
 
   it('wiki_search builds POST /workspaces/{ws}/wikis/{wikiId}/search with the query body', async () => {
@@ -323,6 +351,49 @@ describe('tasks/memory/wiki tools build the right request', () => {
     expect(parsedUrl.searchParams.get('visibility')).toBe('WORKSPACE');
     expect(parsedUrl.searchParams.get('limit')).toBe('25');
     expect(parsedUrl.searchParams.get('cursor')).toBe('opaque-cursor');
+    expect(init.method).toBe('GET');
+  });
+
+  it('memory_list forwards sessionId/projectSlug as query params', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(200, { items: [], nextCursor: null, hasMore: false }),
+    );
+    const client = new BranorOsClient(
+      { apiBaseUrl: 'http://api.test', apiPrefix: '/api/v1', apiKey: 'ak_test' },
+      fetchMock as unknown as typeof fetch,
+    );
+    const endpoints = createEndpoints(client, { workspaceId: 'ws_pub_1' });
+
+    const schema = z.object(memoryList.inputSchema);
+    const parsed = schema.parse({ sessionId: 'sess-1', projectSlug: 'proj-1' });
+    await memoryList.handler(parsed, endpoints);
+
+    const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const parsedUrl = new URL(url);
+    expect(parsedUrl.searchParams.get('sessionId')).toBe('sess-1');
+    expect(parsedUrl.searchParams.get('projectSlug')).toBe('proj-1');
+  });
+
+  it('memory_bootstrap forwards sessionId/projectSlug as query params', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, []));
+    const client = new BranorOsClient(
+      { apiBaseUrl: 'http://api.test', apiPrefix: '/api/v1', apiKey: 'ak_test' },
+      fetchMock as unknown as typeof fetch,
+    );
+    const endpoints = createEndpoints(client, { workspaceId: 'ws_pub_1' });
+
+    const schema = z.object(memoryBootstrap.inputSchema);
+    const parsed = schema.parse({ sessionId: 'sess-1', projectSlug: 'proj-1' });
+    await memoryBootstrap.handler(parsed, endpoints);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const parsedUrl = new URL(url);
+    expect(parsedUrl.pathname).toBe(
+      '/api/v1/workspaces/ws_pub_1/memories/bootstrap',
+    );
+    expect(parsedUrl.searchParams.get('sessionId')).toBe('sess-1');
+    expect(parsedUrl.searchParams.get('projectSlug')).toBe('proj-1');
     expect(init.method).toBe('GET');
   });
 

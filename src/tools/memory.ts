@@ -49,6 +49,8 @@ export const memorySearch = defineTool({
     query: z.string().min(1).describe('Texto ou pergunta para buscar'),
     clientSlug: z.string().optional().describe('Slug do cliente para filtrar memórias'),
     agentId: z.string().uuid().optional().describe('ID do agente para filtrar memórias'),
+    sessionId: z.string().optional().describe('Filtra por ID de sessão (recall por conversa)'),
+    projectSlug: z.string().optional().describe('Filtra por slug de projeto'),
     topK: z
       .number()
       .int()
@@ -72,6 +74,8 @@ export const memorySearch = defineTool({
       query: input.query,
       clientSlug: input.clientSlug,
       agentId: input.agentId,
+      sessionId: input.sessionId,
+      projectSlug: input.projectSlug,
       topK: input.topK,
       memoryType: input.memoryType,
       minImportance: input.minImportance,
@@ -151,6 +155,8 @@ export const memoryBootstrap = defineTool({
   inputSchema: {
     clientSlug: z.string().optional().describe('Slug do cliente para filtrar memórias'),
     agentId: z.string().uuid().optional().describe('ID do agente para filtrar memórias'),
+    sessionId: z.string().optional().describe('Filtra por ID de sessão (recall por conversa)'),
+    projectSlug: z.string().optional().describe('Filtra por slug de projeto'),
     memoryType: z
       .array(z.enum(MEMORY_TYPE_VALUES))
       .optional()
@@ -172,6 +178,8 @@ export const memoryBootstrap = defineTool({
     const result = await endpoints.bootstrapMemory({
       clientSlug: input.clientSlug,
       agentId: input.agentId,
+      sessionId: input.sessionId,
+      projectSlug: input.projectSlug,
       memoryType: input.memoryType,
       minImportance: input.minImportance,
       limit: input.limit,
@@ -432,6 +440,8 @@ export const memoryList = defineTool({
   inputSchema: {
     clientSlug: z.string().optional().describe('Slug do cliente para filtrar memórias'),
     agentId: z.string().uuid().optional().describe('ID do agente para filtrar memórias'),
+    sessionId: z.string().optional().describe('Filtra por ID de sessão (recall por conversa)'),
+    projectSlug: z.string().optional().describe('Filtra por slug de projeto'),
     memoryType: z
       .array(z.enum(MEMORY_TYPE_VALUES))
       .optional()
@@ -460,6 +470,8 @@ export const memoryList = defineTool({
     endpoints.listMemories({
       clientSlug: input.clientSlug,
       agentId: input.agentId,
+      sessionId: input.sessionId,
+      projectSlug: input.projectSlug,
       memoryType: input.memoryType,
       scope: input.scope,
       visibility: input.visibility,

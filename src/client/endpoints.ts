@@ -452,6 +452,8 @@ export function createEndpoints(client: BranorOsClient, ctx: CallContext) {
     listMemories: (query?: {
       clientSlug?: string;
       agentId?: string;
+      sessionId?: string;
+      projectSlug?: string;
       memoryType?: string[];
       scope?: string;
       visibility?: string;
@@ -461,6 +463,8 @@ export function createEndpoints(client: BranorOsClient, ctx: CallContext) {
       client.get<unknown>(wp('/memories'), {
         clientSlug: query?.clientSlug,
         agentId: query?.agentId,
+        sessionId: query?.sessionId,
+        projectSlug: query?.projectSlug,
         memoryType: query?.memoryType?.length
           ? query.memoryType.join(',')
           : undefined,
@@ -520,6 +524,8 @@ export function createEndpoints(client: BranorOsClient, ctx: CallContext) {
       query: string;
       clientSlug?: string;
       agentId?: string;
+      sessionId?: string;
+      projectSlug?: string;
       topK?: number;
       memoryType?: string[];
       minImportance?: number;
@@ -620,6 +626,8 @@ export function createEndpoints(client: BranorOsClient, ctx: CallContext) {
     bootstrapMemory: (query: {
       clientSlug?: string;
       agentId?: string;
+      sessionId?: string;
+      projectSlug?: string;
       memoryType?: string[];
       minImportance?: number;
       limit?: number;
@@ -627,6 +635,8 @@ export function createEndpoints(client: BranorOsClient, ctx: CallContext) {
       client.get<unknown>(wp('/memories/bootstrap'), {
         clientSlug: query.clientSlug,
         agentId: query.agentId,
+        sessionId: query.sessionId,
+        projectSlug: query.projectSlug,
         memoryType: query.memoryType?.length
           ? query.memoryType.join(',')
           : undefined,
