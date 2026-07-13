@@ -82,17 +82,17 @@ export const memorySearch = defineTool({
 
 export const memoryAdd = defineTool({
   name: 'memory_add',
-  description: `Cria uma Memória — fato/registro atômico otimizado para recall futuro do agente. ${MEMORY_DESC} content deve seguir a convenção FACT/DECISION/RISK quando aplicável. scope define o nível de isolamento (USER/AGENT/SESSION/CLIENT/PROJECT); visibility controla quem pode ler (PRIVATE = só o dono, WORKSPACE = todo o workspace, ORGANIZATION = visível/gerenciável de qualquer workspace da mesma organização — ex.: uma lição geral válida para todos os clientes). memoryType LESSON = aprendizado/lição extraída de uma situação, tipicamente promovida a visibility=ORGANIZATION quando generalizável.`,
+  description: `Cria uma Memória — fato/registro atômico otimizado para recall futuro do agente. ${MEMORY_DESC} content deve seguir a convenção FACT/DECISION/RISK quando aplicável. scope define o nível de isolamento (USER/AGENT/CLIENT/PROJECT); visibility controla quem pode ler (PRIVATE = só o dono, WORKSPACE = todo o workspace, ORGANIZATION = visível/gerenciável de qualquer workspace da mesma organização — ex.: uma lição geral válida para todos os clientes). memoryType LESSON = aprendizado/lição extraída de uma situação, tipicamente promovida a visibility=ORGANIZATION quando generalizável.`,
   inputSchema: {
     scope: z
-      .enum(['USER', 'AGENT', 'SESSION', 'CLIENT', 'PROJECT'])
+      .enum(['USER', 'AGENT', 'CLIENT', 'PROJECT'])
       .describe('Nível de isolamento da memória'),
     memoryType: z.enum(MEMORY_TYPE_VALUES).describe('Tipo do registro'),
     content: z.string().min(1).describe('Corpo da memória — convenção FACT/DECISION/RISK'),
     summary: z.string().optional().describe('Resumo curto (usado em listagens/prompt)'),
     sourceType: z.enum(['CONVERSATION', 'DOCUMENT', 'MANUAL']).describe('Origem do registro'),
     agentId: z.string().uuid().optional().describe('ID do agente (quando scope=AGENT)'),
-    sessionId: z.string().optional().describe('ID da sessão (quando scope=SESSION)'),
+    sessionId: z.string().optional().describe('ID da sessão — proveniência/filtro de recall por conversa (NÃO é eixo de isolamento; scope=SESSION foi deprecado)'),
     projectSlug: z.string().optional().describe('Slug do projeto (quando scope=PROJECT)'),
     visibility: z
       .enum(MEMORY_VISIBILITY_VALUES)
@@ -207,7 +207,7 @@ export const memoryUpdate = defineTool({
     slug: z.string().optional().describe('Novo slug da memória'),
     memoryType: z.enum(MEMORY_TYPE_VALUES).optional().describe('Novo tipo do registro'),
     scope: z
-      .enum(['USER', 'AGENT', 'SESSION', 'CLIENT', 'PROJECT'])
+      .enum(['USER', 'AGENT', 'CLIENT', 'PROJECT'])
       .optional()
       .describe('Novo nível de isolamento da memória'),
     importance: z.number().min(0).max(1).optional().describe('Nova importância (0..1)'),
@@ -432,7 +432,7 @@ export const memoryList = defineTool({
       .optional()
       .describe('Filtra por tipo(s) de memória'),
     scope: z
-      .enum(['USER', 'AGENT', 'SESSION', 'CLIENT', 'PROJECT'])
+      .enum(['USER', 'AGENT', 'CLIENT', 'PROJECT'])
       .optional()
       .describe('Filtra por escopo de isolamento da memória'),
     visibility: z
