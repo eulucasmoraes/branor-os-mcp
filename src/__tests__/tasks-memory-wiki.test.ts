@@ -83,7 +83,6 @@ describe('tasks/memory/wiki tools build the right request', () => {
     expect(init.method).toBe('POST');
     expect(JSON.parse(init.body as string)).toEqual({
       query: 'meta budget rule',
-      clientSlug: undefined,
       agentId: undefined,
       sessionId: undefined,
       projectSlug: undefined,
@@ -223,7 +222,6 @@ describe('tasks/memory/wiki tools build the right request', () => {
       material: 'transcript...',
       sessionId: 'sess_1',
       agentId: undefined,
-      clientSlug: undefined,
     });
   });
 
@@ -303,12 +301,12 @@ describe('tasks/memory/wiki tools build the right request', () => {
     const endpoints = createEndpoints(client, { workspaceId: 'ws_pub_1' });
 
     const schema = z.object(memoryList.inputSchema);
-    const parsed = schema.parse({ clientSlug: 'acme' });
+    const parsed = schema.parse({ agentId: '11111111-1111-1111-1111-111111111111' });
     await memoryList.handler(parsed, endpoints);
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe('http://api.test/api/v1/workspaces/ws_pub_1/memories?clientSlug=acme');
+    expect(url).toBe('http://api.test/api/v1/workspaces/ws_pub_1/memories?agentId=11111111-1111-1111-1111-111111111111');
     expect(init.method).toBe('GET');
   });
 

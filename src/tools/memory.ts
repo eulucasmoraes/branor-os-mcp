@@ -47,7 +47,6 @@ export const memorySearch = defineTool({
   description: `Busca semântica nas Memórias do agente/usuário. ${MEMORY_DESC} Retorna memórias relevantes ordenadas por similaridade (score).`,
   inputSchema: {
     query: z.string().min(1).describe('Texto ou pergunta para buscar'),
-    clientSlug: z.string().optional().describe('Slug do cliente para filtrar memórias'),
     agentId: z.string().uuid().optional().describe('ID do agente para filtrar memórias'),
     sessionId: z.string().optional().describe('Filtra por ID de sessão (recall por conversa)'),
     projectSlug: z.string().optional().describe('Filtra por slug de projeto'),
@@ -72,7 +71,6 @@ export const memorySearch = defineTool({
   handler: async (input, endpoints) =>
     endpoints.searchMemory({
       query: input.query,
-      clientSlug: input.clientSlug,
       agentId: input.agentId,
       sessionId: input.sessionId,
       projectSlug: input.projectSlug,
@@ -93,7 +91,6 @@ export const memoryAdd = defineTool({
     content: z.string().min(1).describe('Corpo da memória — convenção FACT/DECISION/RISK'),
     summary: z.string().optional().describe('Resumo curto (usado em listagens/prompt)'),
     sourceType: z.enum(['CONVERSATION', 'DOCUMENT', 'MANUAL']).describe('Origem do registro'),
-    clientSlug: z.string().optional().describe('Slug do cliente (quando scope=CLIENT)'),
     agentId: z.string().uuid().optional().describe('ID do agente (quando scope=AGENT)'),
     sessionId: z.string().optional().describe('ID da sessão (quando scope=SESSION)'),
     projectSlug: z.string().optional().describe('Slug do projeto (quando scope=PROJECT)'),
@@ -130,7 +127,6 @@ export const memoryAdd = defineTool({
       content: input.content,
       summary: input.summary,
       sourceType: input.sourceType,
-      clientSlug: input.clientSlug,
       agentId: input.agentId,
       sessionId: input.sessionId,
       projectSlug: input.projectSlug,
@@ -153,7 +149,6 @@ export const memoryBootstrap = defineTool({
   description:
     'Lista memórias do escopo por importância (não-semântica) — use no início da sessão pra carregar o contexto relevante; filtre por tipo/importância pra não trazer memórias irrelevantes. Retorna uma projeção compacta (sem o content inteiro) pra não estourar o contexto do agente.',
   inputSchema: {
-    clientSlug: z.string().optional().describe('Slug do cliente para filtrar memórias'),
     agentId: z.string().uuid().optional().describe('ID do agente para filtrar memórias'),
     sessionId: z.string().optional().describe('Filtra por ID de sessão (recall por conversa)'),
     projectSlug: z.string().optional().describe('Filtra por slug de projeto'),
@@ -176,7 +171,6 @@ export const memoryBootstrap = defineTool({
   },
   handler: async (input, endpoints) => {
     const result = await endpoints.bootstrapMemory({
-      clientSlug: input.clientSlug,
       agentId: input.agentId,
       sessionId: input.sessionId,
       projectSlug: input.projectSlug,
@@ -223,7 +217,6 @@ export const memoryUpdate = defineTool({
       .describe(
         'Nova visibilidade. ORGANIZATION promove a memória para qualquer workspace da mesma organização (ex.: lição geral pra todos os clientes).',
       ),
-    clientSlug: z.string().optional().describe('Slug do cliente para filtrar/isolar'),
     agentId: z.string().uuid().optional().describe('ID do agente para filtrar/isolar'),
     confidence: z
       .enum(['EVIDENCE', 'SYNTHETIC'])
@@ -272,7 +265,7 @@ export const memoryUpdate = defineTool({
         metadata: input.metadata,
         isActive: input.isActive,
       },
-      { clientSlug: input.clientSlug, agentId: input.agentId },
+      { agentId: input.agentId },
     );
   },
 });
@@ -283,11 +276,10 @@ export const memoryGet = defineTool({
     'Lê uma memória específica por ID ou publicId. Retorna o registro completo (content, summary, tipo, escopo, importância, visibilidade).',
   inputSchema: {
     id: z.string().min(1).describe('ID ou publicId da memória'),
-    clientSlug: z.string().optional().describe('Slug do cliente para filtrar/isolar'),
     agentId: z.string().uuid().optional().describe('ID do agente para filtrar/isolar'),
   },
   handler: async (input, endpoints) =>
-    endpoints.getMemory(input.id, { clientSlug: input.clientSlug, agentId: input.agentId }),
+    endpoints.getMemory(input.id, { agentId: input.agentId }),
 });
 
 export const memoryDeactivate = defineTool({
@@ -296,12 +288,10 @@ export const memoryDeactivate = defineTool({
     'Remove (SOFT-delete, reversível) uma memória: marca isActive=false e registra deletedAt. NÃO apaga fisicamente o registro.',
   inputSchema: {
     id: z.string().min(1).describe('ID ou publicId da memória'),
-    clientSlug: z.string().optional().describe('Slug do cliente para filtrar/isolar'),
     agentId: z.string().uuid().optional().describe('ID do agente para filtrar/isolar'),
   },
   handler: async (input, endpoints) =>
     endpoints.deactivateMemory(input.id, {
-      clientSlug: input.clientSlug,
       agentId: input.agentId,
     }),
 });
@@ -330,7 +320,6 @@ export const memoryGcCandidates = defineTool({
       .optional()
       .describe('Dias sem acesso/desde criação para considerar fria (padrão: 90)'),
     limit: z.number().int().min(1).optional().describe('Número máximo de resultados'),
-    clientSlug: z.string().optional().describe('Slug do cliente para filtrar memórias'),
     agentId: z.string().uuid().optional().describe('ID do agente para filtrar memórias'),
   },
   handler: async (input, endpoints) => {
@@ -339,7 +328,6 @@ export const memoryGcCandidates = defineTool({
       maxAccessCount: input.maxAccessCount,
       inactiveDays: input.inactiveDays,
       limit: input.limit,
-      clientSlug: input.clientSlug,
       agentId: input.agentId,
     });
     const list = Array.isArray(result) ? result : [];
@@ -363,14 +351,12 @@ export const memoryConsolidate = defineTool({
     material: z.string().min(1).describe('Material bruto a consolidar (ex.: transcrição)'),
     sessionId: z.string().min(1).describe('ID da sessão de origem do material'),
     agentId: z.string().uuid().optional().describe('ID do agente relacionado'),
-    clientSlug: z.string().optional().describe('Slug do cliente relacionado'),
   },
   handler: async (input, endpoints) =>
     endpoints.consolidateMemory({
       material: input.material,
       sessionId: input.sessionId,
       agentId: input.agentId,
-      clientSlug: input.clientSlug,
     }),
 });
 
@@ -438,7 +424,6 @@ export const memoryList = defineTool({
   description:
     'Índice de curadoria — devolve resumos + publicId, SEM content (use memory_get pra ler o corpo); filtrável por tipo/escopo/visibilidade, ordenado por recência, paginado via cursor (nextCursor/hasMore).',
   inputSchema: {
-    clientSlug: z.string().optional().describe('Slug do cliente para filtrar memórias'),
     agentId: z.string().uuid().optional().describe('ID do agente para filtrar memórias'),
     sessionId: z.string().optional().describe('Filtra por ID de sessão (recall por conversa)'),
     projectSlug: z.string().optional().describe('Filtra por slug de projeto'),
@@ -468,7 +453,6 @@ export const memoryList = defineTool({
   },
   handler: async (input, endpoints) =>
     endpoints.listMemories({
-      clientSlug: input.clientSlug,
       agentId: input.agentId,
       sessionId: input.sessionId,
       projectSlug: input.projectSlug,
