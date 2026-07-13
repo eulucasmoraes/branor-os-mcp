@@ -130,6 +130,26 @@ export const wikiGraph = defineTool({
   handler: async (input, endpoints) => endpoints.getWikiGraph(input.wikiId),
 });
 
+export const wikiPush = defineTool({
+  name: 'wiki_push',
+  description:
+    'Força commit+push (DB→git) de uma wiki git-backed. Requer WikiGitLink conectado; erro claro se não houver.',
+  inputSchema: {
+    wikiId: z.string().describe('ID da wiki'),
+  },
+  handler: async (input, endpoints) => endpoints.pushWikiGit(input.wikiId),
+});
+
+export const wikiGitStatus = defineTool({
+  name: 'wiki_git_status',
+  description:
+    'Retorna o estado git da wiki: se está conectada, últimos sync/push e quantos nós estão pendentes de push.',
+  inputSchema: {
+    wikiId: z.string().describe('ID da wiki'),
+  },
+  handler: async (input, endpoints) => endpoints.getWikiGitStatus(input.wikiId),
+});
+
 export const wikiTools = [
   wikiSearch,
   wikiNodeRead,
@@ -138,4 +158,6 @@ export const wikiTools = [
   wikiTree,
   wikiNodeDelete,
   wikiGraph,
+  wikiPush,
+  wikiGitStatus,
 ];

@@ -22,6 +22,8 @@ import {
   wikiTree,
   wikiNodeDelete,
   wikiGraph,
+  wikiPush,
+  wikiGitStatus,
 } from '../tools/wiki.js';
 import { BranorOsClient } from '../client/http.js';
 import { createEndpoints } from '../client/endpoints.js';
@@ -34,9 +36,9 @@ function jsonResponse(status: number, body: unknown): Response {
 }
 
 describe('tasks/memory/wiki tools registry', () => {
-  it('registers all 23 tools (4 tasks + 12 memory + 7 wiki) in the global registry', () => {
+  it('registers all 25 tools (4 tasks + 12 memory + 9 wiki) in the global registry', () => {
     const names = new Set([...taskTools, ...memoryTools, ...wikiTools].map((t) => t.name));
-    expect(names.size).toBe(23);
+    expect(names.size).toBe(25);
     for (const name of names) {
       expect(allTools.some((t) => t.name === name)).toBe(true);
     }
@@ -577,6 +579,53 @@ describe('tasks/memory/wiki tools build the right request', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe('http://api.test/api/v1/workspaces/ws_pub_1/wikis/wk_1/graph');
+    expect(init.method).toBe('GET');
+  });
+
+  it('wiki_push builds POST /workspaces/{ws}/wikis/{wikiId}/git/push', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { ok: true }));
+    const client = new BranorOsClient(
+      { apiBaseUrl: 'http://api.test', apiPrefix: '/api/v1', apiKey: 'ak_test' },
+      fetchMock as unknown as typeof fetch,
+    );
+    const endpoints = createEndpoints(client, { workspaceId: 'ws_pub_1' });
+
+    const schema = z.object(wikiPush.inputSchema);
+    const parsed = schema.parse({ wikiId: 'wk_1' });
+    await wikiPush.handler(parsed, endpoints);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('http://api.test/api/v1/workspaces/ws_pub_1/wikis/wk_1/git/push');
+    expect(init.method).toBe('POST');
+  });
+
+  it('wiki_git_status builds GET /workspaces/{ws}/wikis/{wikiId}/git', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(200, {
+        connected: true,
+        repoFullName: 'org/repo',
+        branch: 'main',
+        syncStatus: 'SYNCED',
+        lastSyncAt: '2026-07-13T00:00:00.000Z',
+        lastSyncCommit: 'abc123',
+        lastPushedCommit: 'abc123',
+        pendingPushCount: 0,
+      }),
+    );
+    const client = new BranorOsClient(
+      { apiBaseUrl: 'http://api.test', apiPrefix: '/api/v1', apiKey: 'ak_test' },
+      fetchMock as unknown as typeof fetch,
+    );
+    const endpoints = createEndpoints(client, { workspaceId: 'ws_pub_1' });
+
+    const schema = z.object(wikiGitStatus.inputSchema);
+    const parsed = schema.parse({ wikiId: 'wk_1' });
+    await wikiGitStatus.handler(parsed, endpoints);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('http://api.test/api/v1/workspaces/ws_pub_1/wikis/wk_1/git');
     expect(init.method).toBe('GET');
   });
 });

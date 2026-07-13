@@ -734,6 +734,22 @@ export function createEndpoints(client: BranorOsClient, ctx: CallContext) {
      */
     getWikiGraph: (wikiId: string) =>
       client.get<unknown>(wp(`/wikis/${wikiId}/graph`)),
+
+    /**
+     * POST /workspaces/{workspaceId}/wikis/{wikiId}/git/push — força
+     * commit+push (DB→git) de uma wiki git-backed. Requer WikiGitLink
+     * conectado. Backing tool: wiki_push.
+     */
+    pushWikiGit: (wikiId: string) =>
+      client.post<unknown>(wp(`/wikis/${wikiId}/git/push`)),
+
+    /**
+     * GET /workspaces/{workspaceId}/wikis/{wikiId}/git — estado git da
+     * wiki (conectada, últimos sync/push, nós pendentes de push). Backing
+     * tool: wiki_git_status.
+     */
+    getWikiGitStatus: (wikiId: string) =>
+      client.get<unknown>(wp(`/wikis/${wikiId}/git`)),
   };
 }
 
