@@ -39,6 +39,10 @@ const TARGETING_DESC = [
   'messenger_positions: ["messenger_home","story"],',
   'device_platforms: ["mobile","desktop"].',
   'Also: age_min/age_max, genders [1=male,2=female], interests/behaviors/custom_audiences ([{id}]), flexible_spec, excluded_custom_audiences, locales.',
+  'FIXED AUDIENCE (locked genders/age): Meta REQUIRES targeting_automation, else it rejects with 422.',
+  'Either targeting_automation:{advantage_audience:0} (turns Advantage+ audience OFF → fully fixed),',
+  'or targeting_automation:{advantage_audience:1, individual_setting:{...}} (declares which of age/gender/geo stay fixed vs. expand).',
+  'The literal 0 is meaningful — send it as-is; it is forwarded verbatim.',
 ].join(' ');
 
 // Converts the tool's validate_only flag into the execution_options array

@@ -126,6 +126,46 @@ describe('meta write tools build the right request', () => {
     expect(body.status).toBe('PAUSED');
   });
 
+  it('create_adset forwards targeting_automation verbatim (advantage_audience:0 and individual_setting)', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(201, { id: 'as_new' }));
+    const client = new BranorOsClient(
+      { apiBaseUrl: 'http://api.test', apiPrefix: '/api/v1', apiKey: 'ak_test' },
+      fetchMock as unknown as typeof fetch,
+    );
+    const endpoints = createEndpoints(client, { workspaceId: 'ws_pub_1' });
+
+    const targeting = {
+      geo_locations: { regions: [{ key: '460', country: 'BR' }] },
+      genders: [2],
+      age_min: 45,
+      age_max: 65,
+      // The literal 0 must survive — it disables Advantage+ audience (fixed audience).
+      targeting_automation: {
+        advantage_audience: 0,
+        individual_setting: { age: 1, gender: 1, geo: 1 },
+      },
+    };
+
+    const schema = z.object(createAdset.inputSchema);
+    const parsed = schema.parse({
+      name: 'Mulheres 45-65',
+      campaign_id: '120210000001234567',
+      optimization_goal: 'OFFSITE_CONVERSIONS',
+      targeting,
+      reason: 'Público fixo feminino 45-65',
+    });
+    await createAdset.handler(parsed, endpoints);
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(init.body as string);
+    // Round-tripped through JSON — the literal 0 and the nested individual_setting
+    // must both be present exactly as sent.
+    expect(body.targeting.targeting_automation).toEqual({
+      advantage_audience: 0,
+      individual_setting: { age: 1, gender: 1, geo: 1 },
+    });
+  });
+
   it('create_ad POSTs /workspaces/{ws}/meta/ads and maps validate_only -> execution_options', async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(201, { id: 'ad_new' }));
     const client = new BranorOsClient(
