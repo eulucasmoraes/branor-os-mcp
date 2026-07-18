@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { allTools } from '../tools/index.js';
-import { metaTools, deepDiveCampaign, createCampaign, getCampaign, createAdset } from '../tools/meta.js';
+import { metaTools, deepDiveCampaign, createCampaign, getCampaign, createAdset, createAd, updateAd } from '../tools/meta.js';
 import { BranorOsClient } from '../client/http.js';
 import { createEndpoints } from '../client/endpoints.js';
 
@@ -124,5 +124,73 @@ describe('meta write tools build the right request', () => {
     expect(body.campaign_id).toBe('120210000001234567');
     expect(body.billing_event).toBe('IMPRESSIONS');
     expect(body.status).toBe('PAUSED');
+  });
+
+  it('create_ad POSTs /workspaces/{ws}/meta/ads and maps validate_only -> execution_options', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(201, { id: 'ad_new' }));
+    const client = new BranorOsClient(
+      { apiBaseUrl: 'http://api.test', apiPrefix: '/api/v1', apiKey: 'ak_test' },
+      fetchMock as unknown as typeof fetch,
+    );
+    const endpoints = createEndpoints(client, { workspaceId: 'ws_pub_1' });
+
+    const schema = z.object(createAd.inputSchema);
+    const parsed = schema.parse({
+      name: 'Anúncio Teste',
+      adset_id: '120210000001234567',
+      creative_id: 'cr_1',
+      validate_only: true,
+      reason: 'Testando criação de anúncio',
+    });
+    const result = await createAd.handler(parsed, endpoints);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('http://api.test/api/v1/workspaces/ws_pub_1/meta/ads');
+    expect(init.method).toBe('POST');
+    const body = JSON.parse(init.body as string);
+    expect(body).toMatchObject({
+      name: 'Anúncio Teste',
+      adset_id: '120210000001234567',
+      creative_id: 'cr_1',
+      status: 'PAUSED',
+      reason: 'Testando criação de anúncio',
+      execution_options: ['validate_only'],
+    });
+    // validate_only NÃO pode vazar como chave crua — tem que virar execution_options.
+    expect(body.validate_only).toBeUndefined();
+    expect(result).toEqual({ id: 'ad_new' });
+  });
+
+  it('update_ad PATCHes /workspaces/{ws}/meta/ads/{id} and maps validate_only -> execution_options', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { id: 'ad_1' }));
+    const client = new BranorOsClient(
+      { apiBaseUrl: 'http://api.test', apiPrefix: '/api/v1', apiKey: 'ak_test' },
+      fetchMock as unknown as typeof fetch,
+    );
+    const endpoints = createEndpoints(client, { workspaceId: 'ws_pub_1' });
+
+    const schema = z.object(updateAd.inputSchema);
+    const parsed = schema.parse({
+      adId: '120210000009876543',
+      status: 'ACTIVE',
+      validate_only: true,
+      reason: 'Dry-run de ativação',
+    });
+    await updateAd.handler(parsed, endpoints);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('http://api.test/api/v1/workspaces/ws_pub_1/meta/ads/120210000009876543');
+    expect(init.method).toBe('PATCH');
+    const body = JSON.parse(init.body as string);
+    expect(body).toMatchObject({
+      status: 'ACTIVE',
+      reason: 'Dry-run de ativação',
+      execution_options: ['validate_only'],
+    });
+    // Sem o fix, validate_only era descartado pelo Zod e a escrita executava de verdade.
+    expect(body.validate_only).toBeUndefined();
+    expect(body.adId).toBeUndefined();
   });
 });

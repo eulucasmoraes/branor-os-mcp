@@ -462,9 +462,11 @@ export const createAd = defineTool({
       .record(z.string(), z.unknown())
       .optional()
       .describe('Custom conversion tracking specs. Ex: [{ "action.type": ["offsite_conversion"], "fb_pixel": ["123456"] }]'),
+    validate_only: z.boolean().optional().describe(VALIDATE_ONLY_DESC),
     reason: z.string().min(1),
   },
-  handler: async (params, endpoints) => endpoints.createAd(params),
+  handler: async ({ validate_only, ...params }, endpoints) =>
+    endpoints.createAd({ ...params, execution_options: execOpts(validate_only) }),
 });
 
 export const updateAd = defineTool({
@@ -476,9 +478,11 @@ export const updateAd = defineTool({
     name: z.string().optional(),
     status: z.enum(['ACTIVE', 'PAUSED', 'ARCHIVED']).optional(),
     creative_id: z.string().optional().describe('New creative external ID'),
+    validate_only: z.boolean().optional().describe(VALIDATE_ONLY_DESC),
     reason: z.string().min(1),
   },
-  handler: async ({ adId, ...body }, endpoints) => endpoints.updateAd(adId, body),
+  handler: async ({ adId, validate_only, ...body }, endpoints) =>
+    endpoints.updateAd(adId, { ...body, execution_options: execOpts(validate_only) }),
 });
 
 export const uploadImage = defineTool({
