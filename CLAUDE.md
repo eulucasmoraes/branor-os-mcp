@@ -10,6 +10,21 @@ Servidor MCP que expõe as capacidades do branor-os para agentes: **Meta Ads** (
 
 ---
 
+## Memória do agente — fonte única: branor-os (MCP)
+
+A memória vive **no branor-os via MCP** (skill `branor-memory`) — este mesmo servidor expõe as tools
+`memory_*`. Carregada a cada sessão pelo hook `branor-memory-bootstrap.sh`. Escopo: workspace global
+`36129682143`, **`projectSlug: "branor-os"`** — ao listar/curar, filtre por esse slug (o workspace global junta
+a memória de TODOS os projetos). **Detalhe completo e regras no `CLAUDE.md` da raiz.**
+
+- **NÃO** usar a memória LOCAL do harness (`~/.claude/projects/.../memory/`, bloco "# Memory"/`MEMORY.md`) —
+  deprecada aqui; a verdade é o MCP.
+- Aprender algo durável → `memory_add` (não arquivo). Doc longa/estado em prosa → vault/wiki (`branor-wiki`),
+  nunca memória. `visibility=WORKSPACE` sempre.
+- Verdade final = **código + migrations do backend**; a memória pode estar atrás do que está em prod.
+
+---
+
 ## Como rodar / validar
 
 > ⚠️ **Não roda no Windows/SMB:** os symlinks do virtual store do pnpm não resolvem no share montado no Windows
